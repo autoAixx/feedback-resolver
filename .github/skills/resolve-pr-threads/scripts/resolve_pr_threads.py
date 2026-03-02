@@ -2,16 +2,18 @@
 """
 Mark GitHub PR review threads as resolved.
 
-Reads comment IDs from pr_comments.json (produced by fetch-pr-comments skill),
+Reads comment IDs from a provided JSON list (file or stdin) or from explicit IDs,
 maps them to GraphQL thread node IDs, then calls resolveReviewThread for each.
 
 Priority: gh CLI -> GITHUB_TOKEN
 
 Usage:
-    python resolve_pr_threads.py                  # resolves all threads in pr_comments.json
-    python resolve_pr_threads.py 111 222 333      # resolves threads for specific comment IDs only
+    python resolve_pr_threads.py --input FILE         # read comment list from FILE (JSON array with id)
+    python resolve_pr_threads.py --stdin              # read comment list from stdin (JSON array)
+    python resolve_pr_threads.py 111 222 333          # resolve only these comment IDs
 """
 
+import argparse
 import json
 import os
 import subprocess
@@ -170,26 +172,45 @@ def get_current_pr_number_via_api(owner, repo, token):
         return None
 
 
-def load_comment_ids(args):
-    """Return set of comment database IDs to resolve."""
-    if args:
+def load_comment_ids(cli_ids, input_path, read_stdin):
+    """Return set of comment database IDs to resolve.
+    cli_ids: list of numeric IDs from argv; if non-empty, use only these.
+    input_path: path to JSON file (array of {id, ...}); used if cli_ids is empty and not read_stdin.
+    read_stdin: if True, read JSON array from stdin.
+    """
+    if cli_ids:
         ids = set()
-        for i in args:
+        for i in cli_ids:
             try:
                 ids.add(int(i))
             except ValueError:
                 print(f"ERROR: Invalid comment ID '{i}'. Expected an integer.", file=sys.stderr)
                 sys.exit(1)
         return ids
-    try:
-        with open("pr_comments.json", encoding="utf-8") as f:
-            comments = json.load(f)
-    except FileNotFoundError:
-        print("ERROR: pr_comments.json not found. Run the fetch-pr-comments skill first.", file=sys.stderr)
+
+    if read_stdin:
+        try:
+            comments = json.load(sys.stdin)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Invalid JSON from stdin: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        if not input_path:
+            print("ERROR: No input provided. Use --input FILE, --stdin, or provide explicit IDs.", file=sys.stderr)
+            sys.exit(1)
+        try:
+            with open(input_path, encoding="utf-8") as f:
+                comments = json.load(f)
+        except FileNotFoundError:
+            print(f"ERROR: Input file not found: {input_path}. Provide a comment list (e.g. run fetch-pr-comments first).", file=sys.stderr)
+            sys.exit(1)
+
+    if not isinstance(comments, list):
+        print("ERROR: Input must be a JSON array of comment objects with 'id'.", file=sys.stderr)
         sys.exit(1)
     ids = {c["id"] for c in comments if c.get("id")}
     if not ids:
-        print("ERROR: pr_comments.json contains no comment IDs.", file=sys.stderr)
+        print("ERROR: Comment list contains no comment IDs.", file=sys.stderr)
         sys.exit(1)
     return ids
 
@@ -274,7 +295,18 @@ def fetch_thread_map(owner, repo, pr_number, gh_available, token):
 
 
 def main():
-    comment_ids = load_comment_ids(sys.argv[1:])
+    parser = argparse.ArgumentParser(description="Resolve GitHub PR review threads by comment IDs.")
+    input_group = parser.add_mutually_exclusive_group()
+    input_group.add_argument("--input", "-i", help="Path to JSON file with comment list")
+    input_group.add_argument("--stdin", action="store_true", help="Read comment list (JSON array) from stdin")
+    parser.add_argument("ids", nargs="*", help="Optional: resolve only these comment IDs")
+    args = parser.parse_args()
+
+    if not args.ids and not args.stdin and not args.input:
+        print("ERROR: Provide --input FILE, --stdin, or one or more comment IDs.", file=sys.stderr)
+        sys.exit(2)
+
+    comment_ids = load_comment_ids(args.ids, args.input, args.stdin)
 
     code, _, _ = run("gh --version")
     gh_available = code == 0

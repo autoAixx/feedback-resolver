@@ -1,24 +1,27 @@
 ---
 name: fetch-pr-comments
-description: Fetches inline GitHub PR review comments for the current branch and saves them to pr_comments.json. Tries gh CLI first, falls back to GitHub REST API via GITHUB_TOKEN. Use when you need to retrieve, pull, or load PR review comments or inline feedback from GitHub.
+description: Fetches inline GitHub PR review comments for the current branch. Output can be written to a file or stdout. Use when you need to retrieve, pull, or load PR review comments or inline feedback from GitHub.
 ---
 
 # Fetch PR Comments
 
-Produces `pr_comments.json` in the repo root with the structure:
-```json
-[{ "id": 123456789, "file": "src/foo.ts", "line": 42, "comment": "..." }, ...]
-```
+Fetches inline PR review comments for the current branch and outputs a JSON array. You must choose to write either to a file (explicit `--output`) or to stdout (`--stdout`) so the next step can use the data without relying on a default file.
 
-- `id` — GitHub's numeric comment ID (used by the `resolve-pr-threads` skill to look up and resolve threads).
-- `line` — line number in the file the comment was left on (`null` if GitHub did not provide one).
+**Output shape:** `[{ "id": 123456789, "file": "src/foo.ts", "line": 42, "comment": "..." }, ...]`
+
+- `id` — GitHub's numeric comment ID (used when resolving threads).
+- `line` — line number in the file (`null` if GitHub did not provide one).
 
 ## Run the script
 
 From the repo root:
 
 ```bash
-python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py
+# Custom output path (e.g. temp or project-specific)
+python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py --output /path/to/comments.json
+
+# Output to stdout (no file) — e.g. for piping or capturing in context
+python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py --stdout
 ```
 
 ## Requirements

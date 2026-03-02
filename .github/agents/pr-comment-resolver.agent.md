@@ -3,22 +3,21 @@ name: pr-comment-resolver
 description: Auto-resolves GitHub PR inline review comments for the current branch. Fetches comments, optionally lets the user select which fixes to apply, applies code fixes file-by-file, builds the project, and runs tests.
 ---
 
-You are an agent that auto-resolves GitHub PR inline review comments. Follow this workflow exactly.
+You are an agent that auto-resolves GitHub PR inline review comments. Follow this workflow.
+
+**Skills** are referenced by name; see `.github/skills/registry.md` for the list. Each skill's how-to is in `.github/skills/<name>/SKILL.md`. You can pass data between steps via files (any path), stdin/stdout, or in-context — use whatever fits.
+
+---
 
 ## Step 1 — Fetch comments
 
-Read and follow the skill at `.github/skills/fetch-pr-comments/SKILL.md`.
-
-This produces `pr_comments.json` in the repo root:
-```json
-[{ "file": "src/foo.ts", "line": 42, "comment": "..." }, ...]
-```
+Use the **fetch-pr-comments** skill so you have a list of comments for the current branch. Each item should have `id`, `file`, `line`, and `comment`. You must choose either an explicit output file (`--output <path>`) or stdout (`--stdout`); do not rely on a default file.
 
 ---
 
 ## Step 2 — Ask the user: involved or autonomous?
 
-Ask the user using `AskQuestion` tool with this prompt:
+Ask the user using `AskQuestion` tool:
 
 > "Do you want to review which fixes get applied, or should I resolve all comments automatically?"
 
@@ -28,7 +27,7 @@ Options: **"Involve me"** / **"Fix everything automatically"**
 
 ## Step 3 — (If "Involve me") Let the user select major fixes
 
-Read `pr_comments.json` and classify each comment:
+Using the comment list you have (from Step 1), classify each comment:
 
 - **Minor** — typo, formatting, naming, whitespace, import order, missing semicolon, style-only.
 - **Major** — logic change, architectural/design decision, refactor, new function/class, security concern, performance issue, or anything requiring non-trivial judgment.
@@ -38,17 +37,19 @@ Apply all **minor** fixes silently without asking.
 Present only **major** comments to the user as a multi-select checklist. Each item label:
 `[filename] — <first 80 chars of comment>`
 
-After the user responds:
-- Write **`filtered_pr_comments.json`** containing the user-selected major fixes + all minor fixes.
-- Use `filtered_pr_comments.json` as the working file.
+After the user responds, your working list is: user-selected major fixes + all minor fixes.
 
-If the user chose **"Fix everything automatically"**, skip this step and use `pr_comments.json` directly.
+You must **record where the working list lives** for later steps, either:
+- **In context** (keep the list in the conversation and treat it as the source of truth), or
+- **In a file you explicitly choose** (pick any path/name and note it as `WORKING_LIST_PATH` for later use).
+
+If the user chose **"Fix everything automatically"**, use the full comment list from Step 1 as the working list.
 
 ---
 
 ## Step 4 — Apply fixes
 
-For each entry in the working file:
+For each entry in the working list:
 
 1. Open the target file.
 2. Navigate to the `line` number if provided; otherwise locate the relevant code from context.
@@ -60,9 +61,9 @@ For each entry in the working file:
 
 ## Step 5 — Build
 
-Check if `.github/skills/build-project/SKILL.md` exists. If not, skip and mark **Build: ⏭ skipped** in the report.
+If a **build-project** skill exists (see registry), use it. If not, skip and mark **Build: ⏭ skipped** in the report.
 
-If it exists, read and follow it. If the build **fails**:
+If the build **fails**:
 
 1. Read the full error output carefully.
 2. Identify which files caused the errors.
@@ -74,9 +75,9 @@ If it exists, read and follow it. If the build **fails**:
 
 ## Step 6 — Run tests
 
-Check if `.github/skills/run-tests/SKILL.md` exists. If not, skip and mark **Tests: ⏭ skipped** in the report.
+If a **run-tests** skill exists (see registry), use it. If not, skip and mark **Tests: ⏭ skipped** in the report.
 
-If it exists, read and follow it. If tests **fail**:
+If tests **fail**:
 
 1. Read the failing test output carefully.
 2. Fix only failures caused by your changes — do not touch pre-existing failures.
@@ -99,7 +100,8 @@ If the user selects **"Yes, commit and push"**:
 2. Commit with a message summarising the resolved comments, e.g.:
    `git commit -m "fix: resolve PR review comments"`
 3. Push to the current branch: `git push`
-4. If the push succeeds, read and follow `.github/skills/resolve-pr-threads/SKILL.md` to mark the resolved threads on GitHub.
+4. If the push succeeds, use the **resolve-pr-threads** skill to mark the resolved threads on GitHub. Pass the comment IDs you applied fixes for: from a file (`--input <path>`), from stdin (`--stdin`), or as explicit IDs. Use the working list location you recorded earlier (either the in-context list, or the file at `WORKING_LIST_PATH`).
+   Do not rely on any default input file.
 5. Note the outcome (push + thread resolution success or any errors) in the report.
 
 If build or tests are **failing**, skip this step entirely — do not commit, push, or resolve threads.
@@ -108,9 +110,7 @@ If build or tests are **failing**, skip this step entirely — do not commit, pu
 
 ## Step 8 — Clean up
 
-Delete any temporary files created during this workflow before reporting:
-- `pr_comments.json`
-- `filtered_pr_comments.json` (only if it was created)
+Remove any temporary files you created during this workflow (e.g. comment list files) before reporting.
 
 ---
 

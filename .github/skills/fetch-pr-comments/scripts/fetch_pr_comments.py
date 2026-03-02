@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
 Fetch inline PR review comments for the current branch.
-Outputs pr_comments.json with [{id, file, line, comment}] in the repo root.
+Outputs a JSON array [{id, file, line, comment}] to a file or stdout.
 
 Priority: gh CLI -> GitHub REST API (GITHUB_TOKEN)
+
+Usage:
+  python fetch_pr_comments.py (--output FILE | --stdout)
+  --output FILE   write JSON to FILE
+  --stdout        write JSON to stdout (no file)
 """
 
+import argparse
 import json
 import os
 import subprocess
@@ -111,7 +117,11 @@ def parse_comments(raw):
 
 
 def main():
-    output_file = "pr_comments.json"
+    parser = argparse.ArgumentParser(description="Fetch PR review comments for the current branch.")
+    output_group = parser.add_mutually_exclusive_group(required=True)
+    output_group.add_argument("--output", "-o", help="Output file path")
+    output_group.add_argument("--stdout", action="store_true", help="Write JSON to stdout instead of a file")
+    args = parser.parse_args()
 
     # --- Try gh CLI first ---
     code, _, _ = run("gh --version")
@@ -150,10 +160,13 @@ def main():
 
     comments = parse_comments(raw_comments)
 
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(comments, f, indent=2, ensure_ascii=False)
-
-    print(f"Wrote {len(comments)} comment(s) to {output_file}")
+    if args.stdout:
+        json.dump(comments, sys.stdout, indent=2, ensure_ascii=False)
+        print(file=sys.stdout)
+    else:
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(comments, f, indent=2, ensure_ascii=False)
+        print(f"Wrote {len(comments)} comment(s) to {args.output}")
 
 
 if __name__ == "__main__":
