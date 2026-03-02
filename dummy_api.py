@@ -27,6 +27,7 @@ MOCK_ITEMS = [
 
 class DummyRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    MAX_BODY_BYTES = 1024 * 1024
 
     def _send_json(self, obj, status: int = 200) -> None:
         data = json.dumps(obj).encode("utf-8")
@@ -89,11 +90,19 @@ class DummyRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/") or "/"
 
         if path == "/echo":
-            length = int(self.headers.get("Content-Length", "0") or 0)
+            content_length = self.headers.get("Content-Length", "0")
+            try:
+                length = int(content_length or 0)
+            except ValueError:
+                self._send_json({"error": "Invalid Content-Length header"}, status=400)
+                return
+            if length > self.MAX_BODY_BYTES:
+                self._send_json({"error": "Request body too large"}, status=413)
+                return
             raw = self.rfile.read(length) if length > 0 else b""
             try:
                 body = json.loads(raw.decode("utf-8") or "{}")
-            except json.JSONDecodeError:
+            except (UnicodeDecodeError, json.JSONDecodeError):
                 self._send_json({"error": "Invalid JSON body"}, status=400)
                 return
 
