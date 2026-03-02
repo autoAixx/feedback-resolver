@@ -15,7 +15,7 @@ From the repo root:
 
 ```bash
 # Read from a specific file (e.g. filtered list or custom path)
-python .github/skills/resolve-pr-threads/scripts/resolve_pr_threads.py --input filtered_pr_comments.json
+python .github/skills/resolve-pr-threads/scripts/resolve_pr_threads.py --input /path/to/comments.json
 
 # Read comment list from stdin (e.g. pipe from fetch --stdout)
 python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py --stdout | python .github/skills/resolve-pr-threads/scripts/resolve_pr_threads.py --stdin
@@ -24,7 +24,7 @@ python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py --stdout | 
 python .github/skills/resolve-pr-threads/scripts/resolve_pr_threads.py 111111 222222
 
 # Debug diagnostics (prints to stderr)
-python .github/skills/resolve-pr-threads/scripts/resolve_pr_threads.py --input filtered_pr_comments.json --debug
+python .github/skills/resolve-pr-threads/scripts/resolve_pr_threads.py --input /path/to/comments.json --debug
 ```
 
 ## Requirements
