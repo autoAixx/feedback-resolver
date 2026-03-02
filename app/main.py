@@ -45,18 +45,21 @@ def _calc(op: Op, a: float, b: float) -> float:
     raise HTTPException(status_code=400, detail=f"Unsupported op: {op}")
 
 
-@app.post("/calc", response_model=CalcResponse)
-def calc(payload: CalcRequest) -> CalcResponse:
-    result = _calc(payload.op, payload.a, payload.b)
+def _calc_checked(op: Op, a: float, b: float) -> float:
+    result = _calc(op, a, b)
     if not math.isfinite(result):
         raise HTTPException(status_code=400, detail="Non-finite result.")
+    return result
+
+
+@app.post("/calc", response_model=CalcResponse)
+def calc(payload: CalcRequest) -> CalcResponse:
+    result = _calc_checked(payload.op, payload.a, payload.b)
     return CalcResponse(op=payload.op, a=payload.a, b=payload.b, result=result)
 
 
 @app.get("/calc/{op}", response_model=CalcResponse)
 def calc_get(op: Op, a: FiniteFloat, b: FiniteFloat) -> CalcResponse:
-    result = _calc(op, a, b)
-    if not math.isfinite(result):
-        raise HTTPException(status_code=400, detail="Non-finite result.")
+    result = _calc_checked(op, a, b)
     return CalcResponse(op=op, a=a, b=b, result=result)
 

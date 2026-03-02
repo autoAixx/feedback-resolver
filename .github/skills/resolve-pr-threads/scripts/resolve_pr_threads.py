@@ -11,6 +11,7 @@ Usage:
     python resolve_pr_threads.py --input FILE         # read comment list from FILE (JSON array with id)
     python resolve_pr_threads.py --stdin              # read comment list from stdin (JSON array)
     python resolve_pr_threads.py 111 222 333          # resolve only these comment IDs
+    python resolve_pr_threads.py ... --debug          # print debug diagnostics to stderr
 """
 
 import argparse
@@ -20,6 +21,8 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+import urllib.error
+import urllib.parse
 
 
 def run(cmd):
@@ -158,17 +161,59 @@ def get_pr_info_via_git():
     return parts[0], parts[1]
 
 
-def get_current_pr_number_via_api(owner, repo, token):
+def get_current_pr_number_via_api(owner, repo, token, debug: bool = False):
+    def dbg(msg: str) -> None:
+        if debug:
+            print(f"DEBUG: {msg}", file=sys.stderr)
+
     code, branch, _ = run("git rev-parse --abbrev-ref HEAD")
     if code != 0:
+        dbg("Failed to read current branch via git.")
         return None
-    url = f"https://api.github.com/repos/{owner}/{repo}/pulls?head={owner}:{branch}&state=open"
+    branch = branch.strip()
+    head = f"{owner}:{branch}"
+    url = f"https://api.github.com/repos/{owner}/{repo}/pulls?head={urllib.parse.quote(head, safe='')}&state=open"
+    dbg(f"Looking up open PR via API. branch={branch!r} head={head!r}")
+    dbg(f"GET {url}")
     try:
         req = urllib.request.Request(url, headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json"})
         with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read())
-            return str(data[0]["number"]) if data else None
-    except Exception:
+            raw = resp.read()
+            dbg(f"HTTP {getattr(resp, 'status', 'unknown')} bytes={len(raw)}")
+            data = json.loads(raw)
+
+            if isinstance(data, dict):
+                dbg(f"Unexpected object response: keys={list(data.keys())[:10]}")
+                dbg(f"message={data.get('message')!r} documentation_url={data.get('documentation_url')!r}")
+                return None
+
+            if not isinstance(data, list):
+                dbg(f"Unexpected response type: {type(data).__name__}")
+                return None
+
+            if not data:
+                dbg("No open PRs returned for this head filter.")
+                return None
+
+            pr_number = data[0].get("number")
+            dbg(f"Matched PR number: {pr_number!r}")
+            return str(pr_number) if pr_number else None
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            body = "<unreadable>"
+        status = getattr(e, "code", None)
+        dbg(f"HTTPError status={status} body={body[:1000]!r}")
+        if status == 401:
+            print(
+                "ERROR: GitHub API returned 401 Unauthorized while looking up the PR. "
+                "Check that GITHUB_TOKEN is set, valid, and has repo access, or log in via gh.",
+                file=sys.stderr,
+            )
+        return None
+    except Exception as e:
+        dbg(f"Exception during PR lookup: {type(e).__name__}: {e}")
         return None
 
 
@@ -299,18 +344,25 @@ def main():
     input_group = parser.add_mutually_exclusive_group()
     input_group.add_argument("--input", "-i", help="Path to JSON file with comment list")
     input_group.add_argument("--stdin", action="store_true", help="Read comment list (JSON array) from stdin")
+    parser.add_argument("--debug", action="store_true", help="Print debug diagnostics to stderr")
     parser.add_argument("ids", nargs="*", help="Optional: resolve only these comment IDs")
     args = parser.parse_args()
+
+    def dbg(msg: str) -> None:
+        if args.debug:
+            print(f"DEBUG: {msg}", file=sys.stderr)
 
     if not args.ids and not args.stdin and not args.input:
         print("ERROR: Provide --input FILE, --stdin, or one or more comment IDs.", file=sys.stderr)
         sys.exit(2)
 
     comment_ids = load_comment_ids(args.ids, args.input, args.stdin)
+    dbg(f"Loaded {len(comment_ids)} comment ID(s)")
 
     code, _, _ = run("gh --version")
     gh_available = code == 0
     token = os.environ.get("GITHUB_TOKEN")
+    dbg(f"gh_available={gh_available} token_available={bool(token)}")
 
     if not gh_available and not token:
         print("ERROR: gh CLI not available and GITHUB_TOKEN is not set.", file=sys.stderr)
@@ -321,6 +373,7 @@ def main():
         info = get_pr_info_via_gh()
         if info:
             owner, repo, pr_number = info
+            dbg(f"Using gh CLI. owner={owner} repo={repo} pr={pr_number}")
 
     if not pr_number:
         git_info = get_pr_info_via_git()
@@ -328,14 +381,18 @@ def main():
             print("ERROR: Could not determine owner/repo from git remote.", file=sys.stderr)
             sys.exit(1)
         owner, repo = git_info
-        pr_number = get_current_pr_number_via_api(owner, repo, token)
+        dbg(f"Using git+API. owner={owner} repo={repo}")
+        pr_number = get_current_pr_number_via_api(owner, repo, token, debug=args.debug)
         if not pr_number:
             print("ERROR: Could not find open PR for the current branch.", file=sys.stderr)
             sys.exit(1)
+        dbg(f"Detected PR number via API: pr={pr_number}")
 
     thread_map = fetch_thread_map(owner, repo, pr_number, gh_available, token)
+    dbg(f"Fetched unresolved thread map entries: {len(thread_map)}")
 
     to_resolve = {db_id: thread_map[db_id] for db_id in comment_ids if db_id in thread_map}
+    dbg(f"Threads to resolve (intersection): {len(to_resolve)}")
 
     if not to_resolve:
         print("No matching unresolved threads found for the given comment IDs.")

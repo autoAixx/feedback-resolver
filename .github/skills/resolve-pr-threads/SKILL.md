@@ -22,6 +22,9 @@ python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py --stdout | 
 
 # Resolve only specific comment IDs
 python .github/skills/resolve-pr-threads/scripts/resolve_pr_threads.py 111111 222222
+
+# Debug diagnostics (prints to stderr)
+python .github/skills/resolve-pr-threads/scripts/resolve_pr_threads.py --input filtered_pr_comments.json --debug
 ```
 
 ## Requirements
