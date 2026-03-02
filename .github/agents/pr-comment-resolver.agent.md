@@ -61,7 +61,11 @@ For each entry in the working list:
 
 ## Step 5 — Build
 
-If a **build-project** skill exists (see registry), use it. If not, skip and mark **Build: ⏭ skipped** in the report.
+Prefer using a **build-project** skill if it exists (see registry).
+
+If no build skill exists, still attempt a best-effort build/verification based on what the project is:
+- Infer from common manifests (e.g. `package.json`, `pyproject.toml`, `requirements.txt`, `go.mod`, `Cargo.toml`, `pom.xml`, `build.gradle`) and run the most appropriate build/typecheck/lint step you can discover (for example by inspecting scripts/targets).
+- If you cannot confidently determine any build/verification command, then mark **Build: ⏭ skipped (no build command found)** in the report and continue.
 
 If the build **fails**:
 
@@ -75,7 +79,11 @@ If the build **fails**:
 
 ## Step 6 — Run tests
 
-If a **run-tests** skill exists (see registry), use it. If not, skip and mark **Tests: ⏭ skipped** in the report.
+Prefer using a **run-tests** skill if it exists (see registry).
+
+If no test skill exists, still attempt to run tests based on what the project is:
+- Infer the test runner from the repo (e.g. scripts in `package.json`, `pytest`/`unittest`/`nose` for Python, `go test`, `cargo test`, `mvn test`, `gradle test`) and run the most appropriate command.
+- If you cannot confidently determine how to run tests, then mark **Tests: ⏭ skipped (no test command found)** in the report and continue.
 
 If tests **fail**:
 
