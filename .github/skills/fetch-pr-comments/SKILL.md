@@ -22,6 +22,9 @@ python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py --output /p
 
 # Output to stdout (no file) — e.g. for piping or capturing in context
 python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py --stdout
+
+# Debug diagnostics (prints to stderr; safe with --stdout)
+python .github/skills/fetch-pr-comments/scripts/fetch_pr_comments.py --stdout --debug
 ```
 
 ## Requirements
